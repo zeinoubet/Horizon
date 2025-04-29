@@ -155,6 +155,24 @@ class MagasinModel {
         return $stmt->fetchColumn() > 0;
     }
 }
+public function addCommande($clientNom, $quantite, $adresse, $idProduit) {
+    try {
+        $commande = new Commande();
+        $commande->addCommande($clientNom, $quantite, $adresse, $idProduit);
+    } catch (Exception $e) {
+        throw new Exception("Erreur lors de l'ajout de la commande : " . $e->getMessage());
+    }
+}
+
+public function getCommandes() {
+    try {
+        $commande = new Commande();
+        return $commande->getCommandes();
+    } catch (Exception $e) {
+        throw new Exception("Erreur lors de la récupération des commandes : " . $e->getMessage());
+    }
+}
+
 ?>
 
 

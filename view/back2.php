@@ -43,23 +43,30 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['confirm_add'])) {
         $error = "Veuillez remplir tous les champs correctement.";
     } else {
         try {
-            $sql = "INSERT INTO produit (id, nom, prix, quantite, id_categorie) 
-                    VALUES (:id, :nom, :prix, :quantite, :id_categorie)";
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute([
-                ':id' => $id,
-                ':nom' => $nom,
-                ':prix' => $prix,
-                ':quantite' => $quantite,
-                ':id_categorie' => $id_categorie
-            ]);
-            $success = "Produit ajouté avec succès !";
-            // Rafraîchir la liste des produits
-            $stmt = $pdo->query("SELECT * FROM produit");
-            $produits = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            // Mettre à jour les noms possibles
-            $stmt = $pdo->query("SELECT DISTINCT nom FROM produit");
-            $noms_possibles = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            // Vérifier si l'id existe déjà (double vérification côté serveur)
+            $checkStmt = $pdo->prepare("SELECT COUNT(*) FROM produit WHERE id = :id");
+            $checkStmt->execute([':id' => $id]);
+            if ($checkStmt->fetchColumn() > 0) {
+                $error = "L'ID $id existe déjà. Veuillez choisir un autre ID.";
+            } else {
+                $sql = "INSERT INTO produit (id, nom, prix, quantite, id_categorie) 
+                        VALUES (:id, :nom, :prix, :quantite, :id_categorie)";
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute([
+                    ':id' => $id,
+                    ':nom' => $nom,
+                    ':prix' => $prix,
+                    ':quantite' => $quantite,
+                    ':id_categorie' => $id_categorie
+                ]);
+                $success = "Produit ajouté avec succès !";
+                // Rafraîchir la liste des produits
+                $stmt = $pdo->query("SELECT * FROM produit");
+                $produits = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                // Mettre à jour les noms possibles
+                $stmt = $pdo->query("SELECT DISTINCT nom FROM produit");
+                $noms_possibles = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            }
         } catch (PDOException $e) {
             $error = "Erreur lors de l'ajout du produit : " . $e->getMessage();
         }
@@ -105,10 +112,10 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])
 ?>
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
-    <meta charset="UTF~~@
-    <title>Admin Dashboard - Fitsense</title>
+    <meta charset="UTF-8">
+    <title>Tableau de Bord Admin - Fitsense</title>
     <link rel="stylesheet" href="styles.css">                                      
     <style>
         body {
@@ -194,17 +201,178 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])
             padding: 5px;
             box-sizing: border-box;
         }
+        .error-message {
+            color: red;
+            font-size: 0.9em;
+            display: none;
+        }
     </style>
     <script>
+        let idExists = false;
+
+        function checkId() {
+            const idInput = document.querySelector('input[name="id"]');
+            const idError = document.getElementById('id-error');
+            const idValue = idInput.value.trim();
+
+            if (idValue === '') {
+                idError.textContent = 'L\'ID est requis.';
+                idError.style.display = 'block';
+                idExists = false;
+                return;
+            }
+
+            const id = parseInt(idValue);
+            if (isNaN(id) || id < 1) {
+                idError.textContent = 'L\'ID doit être un entier positif supérieur ou égal à 1.';
+                idError.style.display = 'block';
+                idExists = false;
+                return;
+            }
+
+            // Requête AJAX pour vérifier si l'ID existe
+            fetch('check_id.php?id=' + id)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        idError.textContent = data.error;
+                        idError.style.display = 'block';
+                        idExists = false;
+                    } else if (data.exists) {
+                        idError.textContent = 'Cet ID existe déjà. Veuillez choisir un autre ID.';
+                        idError.style.display = 'block';
+                        idExists = true;
+                    } else {
+                        idError.style.display = 'none';
+                        idExists = false;
+                    }
+                })
+                .catch(error => {
+                    idError.textContent = 'Erreur lors de la vérification de l\'ID.';
+                    idError.style.display = 'block';
+                    idExists = false;
+                });
+        }
+
         function showAddRow() {
             document.getElementById('add-row').style.display = 'table-row';
             document.getElementById('add-btn').style.display = 'none';
+            // Réinitialiser les messages d'erreur
+            document.querySelectorAll('.error-message').forEach(function(el) {
+                el.style.display = 'none';
+            });
         }
+
         function hideAddRow() {
             document.getElementById('add-row').style.display = 'none';
             document.getElementById('add-btn').style.display = 'block';
+            document.querySelectorAll('.error-message').forEach(function(el) {
+                el.style.display = 'none';
+            });
             document.querySelector('form').reset();
         }
+
+        function validateForm() {
+            let isValid = true;
+
+            // Validation ID
+            const idInput = document.querySelector('input[name="id"]');
+            const idError = document.getElementById('id-error');
+            const idValue = idInput.value.trim();
+            if (idValue === '') {
+                idError.textContent = 'L\'ID est requis.';
+                idError.style.display = 'block';
+                isValid = false;
+            } else {
+                const id = parseInt(idValue);
+                if (isNaN(id) || id < 1) {
+                    idError.textContent = 'L\'ID doit être un entier positif supérieur ou égal à 1.';
+                    idError.style.display = 'block';
+                    isValid = false;
+                } else if (idExists) {
+                    idError.textContent = 'Cet ID existe déjà. Veuillez choisir un autre ID.';
+                    idError.style.display = 'block';
+                    isValid = false;
+                } else {
+                    idError.style.display = 'none';
+                }
+            }
+
+            // Validation Nom
+            const nomSelect = document.querySelector('select[name="nom"]');
+            const nomError = document.getElementById('nom-error');
+            if (nomSelect.value === '') {
+                nomError.textContent = 'Veuillez sélectionner un nom.';
+                nomError.style.display = 'block';
+                isValid = false;
+            } else {
+                nomError.style.display = 'none';
+            }
+
+            // Validation Prix
+            const prixInput = document.querySelector('input[name="prix"]');
+            const prixError = document.getElementById('prix-error');
+            const prixValue = prixInput.value.trim();
+            if (prixValue === '') {
+                prixError.textContent = 'Le prix est requis.';
+                prixError.style.display = 'block';
+                isValid = false;
+            } else {
+                const prix = parseFloat(prixValue);
+                if (isNaN(prix) || prix < 0) {
+                    prixError.textContent = 'Le prix doit être un nombre positif.';
+                    prixError.style.display = 'block';
+                    isValid = false;
+                } else {
+                    prixError.style.display = 'none';
+                }
+            }
+
+            // Validation Quantité
+            const quantiteInput = document.querySelector('input[name="quantite"]');
+            const quantiteError = document.getElementById('quantite-error');
+            const quantiteValue = quantiteInput.value.trim();
+            if (quantiteValue === '') {
+                quantiteError.textContent = 'La quantité est requise.';
+                quantiteError.style.display = 'block';
+                isValid = false;
+            } else {
+                const quantite = parseInt(quantiteValue);
+                if (isNaN(quantite) || quantite < 0) {
+                    quantiteError.textContent = 'La quantité doit être un entier positif ou zéro.';
+                    quantiteError.style.display = 'block';
+                    isValid = false;
+                } else {
+                    quantiteError.style.display = 'none';
+                }
+            }
+
+            // Validation ID Catégorie
+            const categorieSelect = document.querySelector('select[name="id_categorie"]');
+            const categorieError = document.getElementById('categorie-error');
+            if (categorieSelect.value === '') {
+                categorieError.textContent = 'Veuillez sélectionner une catégorie.';
+                categorieError.style.display = 'block';
+                isValid = false;
+            } else {
+                categorieError.style.display = 'none';
+            }
+
+            return isValid;
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.querySelector('form');
+            form.addEventListener('submit', function(event) {
+                if (!validateForm()) {
+                    event.preventDefault(); // Empêche la soumission du formulaire
+                }
+            });
+
+            // Ajouter un écouteur d'événements pour vérifier l'ID à chaque changement
+            const idInput = document.querySelector('input[name="id"]');
+            idInput.addEventListener('input', checkId);
+        });
     </script>
 </head>
 <body>
@@ -220,19 +388,23 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])
 </div>
 
 <div class="main-content">
-    <h1>Dashboard</h1>
+    <h1>Tableau de Bord</h1>
     <div class="dashboard">
-        <div class="card"><h3>Total Users</h3><p>50%</p></div>
-        <div class="card"><h3>Total Products</h3><p>30%</p></div>
-        <div class="card"><h3>Total Reservations</h3><p>40%</p></div>
-        <div class="card"><h3>Total Reclamations</h3><p>10%</p></div>
+        <div class="card"><h3>Utilisateurs totaux</h3><p>50%</p></div>
+        <div class="card"><h3>Produits totaux</h3><p>30%</p></div>
+        <div class="card"><h3>Réservations totales</h3><p>40%</p></div>
+        <div class="card"><h3>Réclamations totales</h3><p>10%</p></div>
     </div>
 
-    <h2>Shop Products</h2>
-    <?php if ($error): ?><p class="error"><?php echo htmlspecialchars($error); ?></p><?php endif; ?>
-    <?php if ($success): ?><p class="success"><?php echo htmlspecialchars($success); ?></p><?php endif; ?>
+    <h2>Produits du Magasin</h2>
+    <?php if ($error): ?>
+        <p class="error"><?php echo htmlspecialchars($error); ?></p>
+    <?php endif; ?>
+    <?php if ($success): ?>
+        <p class="success"><?php echo htmlspecialchars($success); ?></p>
+    <?php endif; ?>
 
-    <button id="add-btn" class="add-btn" onclick="showAddRow()">Add Product</button>
+    <button id="add-btn" class="add-btn" onclick="showAddRow()">Ajouter un Produit</button>
     <form method="POST">
         <table>
             <tr>
@@ -252,8 +424,8 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])
                         <td><?php echo htmlspecialchars($produit['quantite']); ?></td>
                         <td><?php echo htmlspecialchars($produit['id_categorie']); ?></td>
                         <td>
-                            <button type="button" class="edit-btn" onclick="window.location.href='modifier.php?id=<?php echo $produit['id']; ?>'">Edit</button>
-                            <button type="button" class="delete-btn" onclick="if(confirm('Voulez-vous vraiment supprimer ce produit ?')) window.location.href='?action=delete&id=<?php echo $produit['id']; ?>'">Delete</button>
+                            <button type="button" class="edit-btn" onclick="window.location.href='modifier.php?id=<?php echo $produit['id']; ?>'">Modifier</button>
+                            <button type="button" class="delete-btn" onclick="if(confirm('Voulez-vous vraiment supprimer ce produit ?')) window.location.href='?action=delete&id=<?php echo $produit['id']; ?>'">Supprimer</button>
                         </td>
                     </tr>
                 <?php endforeach; ?>
@@ -263,41 +435,51 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])
 
             <!-- Ligne d'ajout -->
             <tr id="add-row">
-                <td><input type="number" name="id" min="1" required></td>
                 <td>
-                    <select name="nom" required>
+                    <input type="text" name="id" id="id">
+                    <span id="id-error" class="error-message"></span>
+                </td>
+                <td>
+                    <select name="nom" id="nom">
                         <option value="">Sélectionner</option>
                         <?php foreach ($noms_possibles as $nom): ?>
                             <option value="<?php echo htmlspecialchars($nom); ?>"><?php echo htmlspecialchars($nom); ?></option>
                         <?php endforeach; ?>
                     </select>
+                    <span id="nom-error" class="error-message"></span>
                 </td>
-                <td><input type="number" name="prix" step="0.01" min="0" required></td>
-                <td><input type="number" name="quantite" min="0" required></td>
                 <td>
-                    <select name="id_categorie" required>
+                    <input type="text" name="prix" id="prix">
+                    <span id="prix-error" class="error-message"></span>
+                </td>
+                <td>
+                    <input type="text" name="quantite" id="quantite">
+                    <span id="quantite-error" class="error-message"></span>
+                </td>
+                <td>
+                    <select name="id_categorie" id="id_categorie">
                         <option value="">Sélectionner</option>
                         <?php foreach ($categories as $categorie): ?>
                             <option value="<?php echo $categorie['id_categorie']; ?>"><?php echo htmlspecialchars($categorie['nom']); ?></option>
                         <?php endforeach; ?>
                     </select>
+                    <span id="categorie-error" class="error-message"></span>
                 </td>
                 <td>
-                    <button type="submit" name="confirm_add" class="confirm-btn">Confirm</button>
-                    <button type="button" class="cancel-btn" onclick="hideAddRow()">Cancel</button>
+                    <button type="submit" name="confirm_add" class="confirm-btn">Confirmer</button>
+                    <button type="button" class="cancel-btn" onclick="hideAddRow()">Annuler</button>
                 </td>
             </tr>
         </table>
     </form>
 
-    <h2>Shop Details</h2>
+    <h2>Détails du Magasin</h2>
     <table>
-        <tr><th>Metric</th><th>Value</th></tr>
-        <tr><td>Total Revenue</td><td>$5000</td></tr>
-        <tr><td>Active Customers</td><td>120</td></tr>
-        <tr><td>Pending Orders</td><td>15</td></tr>
+        <tr><th>Métrique</th><th>Valeur</th></tr>
+        <tr><td>Revenu total</td><td>5000 $</td></tr>
+        <tr><td>Clients actifs</td><td>120</td></tr>
+        <tr><td>Commandes en attente</td><td>15</td></tr>
     </table>
 </div>
 </body>
-
 </html>

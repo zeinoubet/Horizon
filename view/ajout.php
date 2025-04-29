@@ -72,15 +72,40 @@
             background-color: #f8f8f8;
         }
     </style>
+    <script>
+        document.querySelector('form').addEventListener('submit', function(e) {
+            const prix = document.getElementById('prix').value.trim();
+            const regex = /^\d+(\.\d{1,2})?$/; // Accepte un nombre positif avec 0 à 2 décimales
+            const prixValue = parseFloat(prix);
+            let errors = [];
+
+            // Validation du prix
+            if (!regex.test(prix)) {
+                errors.push("Veuillez entrer un prix valide (nombre positif, avec jusqu'à 2 décimales).");
+            } else if (prixValue < 0.01) {
+                errors.push("Le prix doit être supérieur ou égal à 0.01.");
+            } else if (prixValue > 10000) {
+                errors.push("Le prix ne peut pas dépasser 10000.");
+            }
+
+            // Afficher les erreurs ou soumettre le formulaire
+            const errorDiv = document.querySelector('.error');
+            if (errors.length > 0) {
+                e.preventDefault(); // Stoppe l’envoi du formulaire
+                errorDiv.innerHTML = errors.join('<br>');
+                errorDiv.style.display = 'block';
+            } else {
+                errorDiv.style.display = 'none';
+            }
+        });
+    </script>
 </head>
 <body>
     <h1>Ajouter un produit</h1>
 
-    <?php if ($error): ?>
-        <p class='error'><?php echo htmlspecialchars($error); ?></p>
-    <?php endif; ?>
+    <p class="error" style="display: <?php echo $error ? 'block' : 'none'; ?>;"><?php echo htmlspecialchars($error ?? ''); ?></p>
     <?php if ($success): ?>
-        <p class='success'><?php echo htmlspecialchars($success); ?></p>
+        <p class="success"><?php echo htmlspecialchars($success); ?></p>
     <?php endif; ?>
 
     <form method="POST">
